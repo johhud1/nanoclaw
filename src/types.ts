@@ -78,6 +78,21 @@ export interface TaskRunLog {
   error: string | null;
 }
 
+// --- Media types ---
+
+export type MediaType = 'image' | 'video' | 'audio' | 'document';
+
+export interface MediaPayload {
+  type: MediaType;
+  data?: string; // Base64-encoded
+  filePath?: string; // Path in /workspace/
+  url?: string; // Remote URL
+  mimeType?: string;
+  filename?: string;
+  caption?: string;
+  ptt?: boolean; // Voice note mode for audio
+}
+
 // --- Channel abstraction ---
 
 export interface Channel {
@@ -91,6 +106,8 @@ export interface Channel {
   setTyping?(jid: string, isTyping: boolean): Promise<void>;
   // Optional: sync group/chat names from the platform.
   syncGroups?(force: boolean): Promise<void>;
+  // Optional: send media (images, videos, audio, documents).
+  sendMedia?(jid: string, media: MediaPayload): Promise<void>;
 }
 
 // Callback type that channels use to deliver inbound messages

@@ -48,7 +48,12 @@ import {
 import { GroupQueue } from './group-queue.js';
 import { resolveGroupFolderPath } from './group-folder.js';
 import { startIpcWatcher } from './ipc.js';
-import { findChannel, formatMessages, formatOutbound } from './router.js';
+import {
+  findChannel,
+  formatMessages,
+  formatOutbound,
+  routeMediaOutbound,
+} from './router.js';
 import {
   restoreRemoteControl,
   startRemoteControl,
@@ -671,6 +676,11 @@ async function main(): Promise<void> {
       const channel = findChannel(channels, jid);
       if (!channel) throw new Error(`No channel for JID: ${jid}`);
       return channel.sendMessage(jid, text);
+    },
+    sendMedia: (jid, media) => {
+      const group = registeredGroups[jid];
+      const groupFolder = group?.folder || 'unknown';
+      return routeMediaOutbound(channels, jid, media, groupFolder);
     },
     registeredGroups: () => registeredGroups,
     registerGroup,

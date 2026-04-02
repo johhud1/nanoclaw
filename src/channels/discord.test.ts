@@ -92,10 +92,21 @@ vi.mock('discord.js', () => {
   // Mock TextChannel type
   class TextChannel {}
 
+  // Mock AttachmentBuilder
+  class AttachmentBuilder {
+    constructor(_data: Buffer, _opts: { name: string }) {}
+  }
+
+  const Partials = {
+    Channel: 1,
+  };
+
   return {
+    AttachmentBuilder,
     Client: MockClient,
     Events,
     GatewayIntentBits,
+    Partials,
     TextChannel,
   };
 });

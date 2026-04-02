@@ -1,4 +1,5 @@
 import {
+  AttachmentBuilder,
   Client,
   Events,
   GatewayIntentBits,
@@ -13,10 +14,12 @@ import { logger } from '../logger.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 import {
   Channel,
+  MediaPayload,
   OnChatMetadata,
   OnInboundMessage,
   RegisteredGroup,
 } from '../types.js';
+import { inferMimeType, resolveMediaBuffer } from '../router.js';
 
 export interface DiscordChannelOpts {
   onMessage: OnInboundMessage;
@@ -251,6 +254,66 @@ export class DiscordChannel implements Channel {
     } catch (err) {
       logger.debug({ jid, err }, 'Failed to send Discord typing indicator');
     }
+  }
+
+  async sendMedia(jid: string, media: MediaPayload): Promise<void> {
+    if (!this.client) {
+      logger.warn('Discord client not initialized');
+      throw new Error('Discord client not initialized');
+    }
+
+    // Resolve group folder from registered groups for path validation
+    const groups = this.opts.registeredGroups();
+    const group = groups[jid];
+    const groupFolder = group?.folder || 'unknown';
+
+    const buffer = await resolveMediaBuffer(media, groupFolder);
+    const filename =
+      media.filename || `${media.type}.${this.getExtension(media)}`;
+
+    try {
+      const channelId = jid.replace(/^dc:/, '');
+      const channel = await this.client.channels.fetch(channelId);
+
+      if (!channel || !('send' in channel)) {
+        logger.warn({ jid }, 'Discord channel not found or not text-based');
+        throw new Error('Discord channel not found');
+      }
+
+      const textChannel = channel as TextChannel;
+      const attachment = new AttachmentBuilder(buffer, { name: filename });
+
+      await textChannel.send({
+        content: media.caption || undefined,
+        files: [attachment],
+      });
+
+      logger.info(
+        { jid, mediaType: media.type, size: buffer.length },
+        'Discord media sent',
+      );
+    } catch (err) {
+      logger.error({ jid, mediaType: media.type, err }, 'Failed to send Discord media');
+      throw err;
+    }
+  }
+
+  private getExtension(media: MediaPayload): string {
+    if (media.filename) {
+      const ext = media.filename.split('.').pop();
+      if (ext) return ext;
+    }
+    if (media.mimeType) {
+      const mimeExt = media.mimeType.split('/').pop();
+      if (mimeExt) return mimeExt === 'jpeg' ? 'jpg' : mimeExt;
+    }
+    const defaults: Record<string, string> = {
+      image: 'png',
+      video: 'mp4',
+      audio: 'mp3',
+      document: 'bin',
+    };
+    return defaults[media.type] || 'bin';
   }
 }
 

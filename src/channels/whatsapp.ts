@@ -41,10 +41,15 @@ import pino from 'pino';
 const baileysLogger = pino({ level: 'silent' });
 import {
   Channel,
+  MediaPayload,
   OnInboundMessage,
   OnChatMetadata,
   RegisteredGroup,
 } from '../types.js';
+import {
+  inferMimeType,
+  resolveMediaBuffer,
+} from '../router.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -411,6 +416,93 @@ export class WhatsAppChannel implements Channel {
 
   async syncGroups(force: boolean): Promise<void> {
     return this.syncGroupMetadata(force);
+  }
+
+  async sendMedia(jid: string, media: MediaPayload): Promise<void> {
+    // Resolve group folder from registered groups for path validation
+    const groups = this.opts.registeredGroups();
+    const group = groups[jid];
+    const groupFolder = group?.folder || 'unknown';
+
+    const buffer = await resolveMediaBuffer(media, groupFolder);
+    // Use filename if provided, otherwise extract from filePath
+    const filename = media.filename || (media.filePath ? media.filePath.split('/').pop() : '');
+    const mimeType =
+      media.mimeType || inferMimeType(filename || '', media.type);
+
+    let messageContent: Parameters<typeof this.sock.sendMessage>[1];
+
+    switch (media.type) {
+      case 'image':
+        messageContent = {
+          image: buffer,
+          caption: media.caption,
+          mimetype: mimeType,
+        };
+        break;
+
+      case 'video':
+        messageContent = {
+          video: buffer,
+          caption: media.caption,
+          mimetype: mimeType,
+        };
+        break;
+
+      case 'audio':
+        messageContent = {
+          audio: buffer,
+          mimetype: mimeType,
+          ptt: media.ptt ?? false,
+        };
+        break;
+
+      case 'document':
+        messageContent = {
+          document: buffer,
+          fileName: media.filename || 'file',
+          caption: media.caption,
+          mimetype: mimeType,
+        };
+        break;
+
+      default:
+        throw new Error(`Unsupported media type: ${media.type}`);
+    }
+
+    if (!this.connected) {
+      logger.warn(
+        { jid, mediaType: media.type },
+        'WA disconnected, cannot send media',
+      );
+      throw new Error('WhatsApp not connected');
+    }
+
+    try {
+      // For groups, refresh metadata to ensure participant keys are current.
+      // This prevents "waiting for this message" errors with media.
+      if (jid.endsWith('@g.us')) {
+        await this.getNormalizedGroupMetadata(jid, true);
+      }
+
+      const sent = await this.sock.sendMessage(jid, messageContent);
+
+      // Cache for retry requests (recipient may ask us to re-encrypt)
+      if (sent?.key?.id && sent.message) {
+        this.sentMessageCache.set(sent.key.id, sent.message);
+        if (this.sentMessageCache.size > 256) {
+          const oldest = this.sentMessageCache.keys().next().value!;
+          this.sentMessageCache.delete(oldest);
+        }
+      }
+      logger.info(
+        { jid, mediaType: media.type, size: buffer.length },
+        'Media sent',
+      );
+    } catch (err) {
+      logger.error({ jid, mediaType: media.type, err }, 'Failed to send media');
+      throw err;
+    }
   }
 
   /**

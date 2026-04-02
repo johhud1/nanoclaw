@@ -63,6 +63,85 @@ server.tool(
 );
 
 server.tool(
+  'send_media',
+  `Send an image, video, audio, or file to the user or group. Provide exactly one of: data (base64), filePath (in /workspace/), or url.
+
+Examples:
+• Image from file: { type: "image", filePath: "/workspace/mygroup/chart.png", caption: "Here's the chart" }
+• Audio voice note: { type: "audio", filePath: "/workspace/mygroup/recording.ogg", ptt: true }
+• Document from URL: { type: "document", url: "https://example.com/report.pdf", filename: "report.pdf" }
+• Image from base64: { type: "image", data: "iVBORw0KGgo...", filename: "screenshot.png" }`,
+  {
+    type: z.enum(['image', 'video', 'audio', 'document']).describe('Media type'),
+    data: z.string().optional().describe('Base64-encoded media content'),
+    filePath: z.string().optional().describe('Path to file in /workspace/ (e.g., /workspace/mygroup/image.png)'),
+    url: z.string().url().optional().describe('URL to fetch media from'),
+    mimeType: z.string().optional().describe('MIME type (auto-detected if not provided)'),
+    filename: z.string().optional().describe('Filename for the media (required for documents, optional for others)'),
+    caption: z.string().optional().describe('Caption/message to send with the media'),
+    ptt: z.boolean().optional().describe('Send audio as voice note (push-to-talk mode)'),
+  },
+  async (args) => {
+    // Validate that exactly one source is provided
+    const sources = [args.data, args.filePath, args.url].filter(Boolean);
+    if (sources.length === 0) {
+      return {
+        content: [{ type: 'text' as const, text: 'Error: Must provide one of: data, filePath, or url' }],
+        isError: true,
+      };
+    }
+    if (sources.length > 1) {
+      return {
+        content: [{ type: 'text' as const, text: 'Error: Provide only one of: data, filePath, or url' }],
+        isError: true,
+      };
+    }
+
+    // Validate filePath is within allowed directories
+    if (args.filePath) {
+      const resolved = path.resolve(args.filePath);
+      const workspaceRoot = `/workspace/${groupFolder}`;
+      const ipcRoot = '/workspace/ipc';
+      if (!resolved.startsWith(workspaceRoot) && !resolved.startsWith(ipcRoot)) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: filePath must be within /workspace/${groupFolder}/ or /workspace/ipc/` }],
+          isError: true,
+        };
+      }
+      if (!fs.existsSync(resolved)) {
+        return {
+          content: [{ type: 'text' as const, text: `Error: File not found: ${args.filePath}` }],
+          isError: true,
+        };
+      }
+    }
+
+    const media = {
+      type: args.type,
+      data: args.data,
+      filePath: args.filePath,
+      url: args.url,
+      mimeType: args.mimeType,
+      filename: args.filename,
+      caption: args.caption,
+      ptt: args.ptt,
+    };
+
+    const data = {
+      type: 'media',
+      chatJid,
+      media,
+      groupFolder,
+      timestamp: new Date().toISOString(),
+    };
+
+    writeIpcFile(MESSAGES_DIR, data);
+
+    return { content: [{ type: 'text' as const, text: `${args.type} sent.` }] };
+  },
+);
+
+server.tool(
   'schedule_task',
   `Schedule a recurring or one-time task. The task will run as a full agent with access to all tools. Returns the task ID for future reference. To modify an existing task, use update_task instead.
 
