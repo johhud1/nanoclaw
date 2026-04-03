@@ -293,7 +293,10 @@ export class DiscordChannel implements Channel {
         'Discord media sent',
       );
     } catch (err) {
-      logger.error({ jid, mediaType: media.type, err }, 'Failed to send Discord media');
+      logger.error(
+        { jid, mediaType: media.type, err },
+        'Failed to send Discord media',
+      );
       throw err;
     }
   }

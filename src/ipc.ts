@@ -100,9 +100,16 @@ export function startIpcWatcher(deps: IpcDeps): void {
                   isMain ||
                   (targetGroup && targetGroup.folder === sourceGroup)
                 ) {
-                  await deps.sendMedia(data.chatJid, data.media as MediaPayload);
+                  await deps.sendMedia(
+                    data.chatJid,
+                    data.media as MediaPayload,
+                  );
                   logger.info(
-                    { chatJid: data.chatJid, sourceGroup, mediaType: data.media.type },
+                    {
+                      chatJid: data.chatJid,
+                      sourceGroup,
+                      mediaType: data.media.type,
+                    },
                     'IPC media sent',
                   );
                 } else {

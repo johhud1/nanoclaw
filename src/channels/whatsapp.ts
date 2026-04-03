@@ -46,10 +46,7 @@ import {
   OnChatMetadata,
   RegisteredGroup,
 } from '../types.js';
-import {
-  inferMimeType,
-  resolveMediaBuffer,
-} from '../router.js';
+import { inferMimeType, resolveMediaBuffer } from '../router.js';
 import { registerChannel, ChannelOpts } from './registry.js';
 
 const GROUP_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
@@ -426,7 +423,8 @@ export class WhatsAppChannel implements Channel {
 
     const buffer = await resolveMediaBuffer(media, groupFolder);
     // Use filename if provided, otherwise extract from filePath
-    const filename = media.filename || (media.filePath ? media.filePath.split('/').pop() : '');
+    const filename =
+      media.filename || (media.filePath ? media.filePath.split('/').pop() : '');
     const mimeType =
       media.mimeType || inferMimeType(filename || '', media.type);
 
